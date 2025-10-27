@@ -1,7 +1,6 @@
-
----
-
 # 🏋️‍♂️ Fitness Tracker Web App
+
+Live at: [Fitness-Tracker](https://fitness-tracker-gamma-indol.vercel.app/)  
 
 A secure, full-stack workout tracking platform built with **React**, **Node.js**, and **MySQL**. Users can log exercises, sets, reps, and weights—complete with authentication, personalized history, and robust backend validation.
 
@@ -41,3 +40,4 @@ A secure, full-stack workout tracking platform built with **React**, **Node.js**
 - **CORS Configuration:** Seamless frontend-backend integration  
 
 ---
+
