@@ -107,8 +107,8 @@ export default function FitnessTracker() {
             <button
               onClick={() => setLoginMode('login')}
               className={`flex-1 py-2 rounded-lg font-semibold transition ${loginMode === 'login'
-                  ? 'bg-cyan-500 text-white'
-                  : 'bg-gray-700 text-gray-300'
+                ? 'bg-cyan-500 text-white'
+                : 'bg-gray-700 text-gray-300'
                 }`}
             >
               Login
@@ -116,8 +116,8 @@ export default function FitnessTracker() {
             <button
               onClick={() => setLoginMode('signup')}
               className={`flex-1 py-2 rounded-lg font-semibold transition ${loginMode === 'signup'
-                  ? 'bg-cyan-500 text-white'
-                  : 'bg-gray-700 text-gray-300'
+                ? 'bg-cyan-500 text-white'
+                : 'bg-gray-700 text-gray-300'
                 }`}
             >
               Sign Up
@@ -230,7 +230,7 @@ export default function FitnessTracker() {
             <input
               type="number"
               step="0.1"
-              placeholder="Weight (lbs)"
+              placeholder="Weight (kgs)"
               value={newExercise.weight}
               onChange={(e) => setNewExercise({ ...newExercise, weight: e.target.value })}
               className="px-4 py-2 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
@@ -270,7 +270,7 @@ export default function FitnessTracker() {
                       {exercise.sets && `${exercise.sets} sets`}
                       {exercise.sets && exercise.reps && ' × '}
                       {exercise.reps && `${exercise.reps} reps`}
-                      {exercise.weight && ` @ ${exercise.weight} lbs`}
+                      {exercise.weight && ` @ ${exercise.weight} kgs`}
                     </p>
                   </div>
                   <button
