@@ -1,281 +1,298 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
-export default function FitnessTracker() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [users, setUsers] = useState({});
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
+function App() {
+  const [token, setToken] = useState(localStorage.getItem('token') || null);
+  const [user, setUser] = useState(null);
   const [loginMode, setLoginMode] = useState('login');
-  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [credentials, setCredentials] = useState({ username: '', password: '', email: '' });
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [workouts, setWorkouts] = useState({});
-  const [newExercise, setNewExercise] = useState({ name: '', sets: '', reps: '', weight: '' });
+  const [workouts, setWorkouts] = useState([]);
+  const [newExercise, setNewExercise] = useState({ exercise_name: '', sets: '', reps: '', weight: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const savedUsers = JSON.parse(sessionStorage.getItem('fitnessUsers') || '{}');
-    const savedCurrentUser = sessionStorage.getItem('currentUser');
-    setUsers(savedUsers);
-    if (savedCurrentUser && savedUsers[savedCurrentUser]) {
-      setCurrentUser(savedCurrentUser);
-      setWorkouts(savedUsers[savedCurrentUser].workouts || {});
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      setUser(userData);
     }
-  }, []);
+  }, [token]);
 
-  const saveToStorage = (updatedUsers, username) => {
-    sessionStorage.setItem('fitnessUsers', JSON.stringify(updatedUsers));
-    sessionStorage.setItem('currentUser', username);
+  useEffect(() => {
+    if (token) {
+      fetchWorkouts();
+    }
+  }, [selectedDate, token]);
+
+  const fetchWorkouts = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API_URL}/workouts/${selectedDate}`);
+      setWorkouts(response.data);
+      setError('');
+    } catch (err) {
+      setError('Failed to load workouts');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAuth = () => {
-    const { username, password } = credentials;
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-    if (loginMode === 'signup') {
-      if (users[username]) {
-        alert('Username already exists!');
-        return;
-      }
-      const newUsers = { ...users, [username]: { password, workouts: {} } };
-      setUsers(newUsers);
-      setCurrentUser(username);
-      setWorkouts({});
-      saveToStorage(newUsers, username);
-      setCredentials({ username: '', password: '' });
-    } else {
-      if (users[username] && users[username].password === password) {
-        setCurrentUser(username);
-        setWorkouts(users[username].workouts || {});
-        sessionStorage.setItem('currentUser', username);
-        setCredentials({ username: '', password: '' });
-      } else {
-        alert('Invalid credentials!');
-      }
+    try {
+      const endpoint = loginMode === 'login' ? '/auth/login' : '/auth/register';
+      const response = await axios.post(`${API_URL}${endpoint}`, credentials);
+
+      setToken(response.data.token);
+      setUser(response.data.user);
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+
+      setCredentials({ username: '', password: '', email: '' });
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Authentication failed');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
-    setWorkouts({});
-    sessionStorage.removeItem('currentUser');
-    setCredentials({ username: '', password: '' });
+    setToken(null);
+    setUser(null);
+    setWorkouts([]);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    delete axios.defaults.headers.common['Authorization'];
   };
 
-  const addExercise = () => {
-    if (!newExercise.name) return;
+  const addExercise = async (e) => {
+    e.preventDefault();
+    if (!newExercise.exercise_name) return;
 
-    const updatedWorkouts = {
-      ...workouts,
-      [selectedDate]: [
-        ...(workouts[selectedDate] || []),
-        { ...newExercise, id: Date.now() }
-      ]
-    };
+    setLoading(true);
+    setError('');
 
-    setWorkouts(updatedWorkouts);
-    const updatedUsers = {
-      ...users,
-      [currentUser]: { ...users[currentUser], workouts: updatedWorkouts }
-    };
-    setUsers(updatedUsers);
-    sessionStorage.setItem('fitnessUsers', JSON.stringify(updatedUsers));
-    setNewExercise({ name: '', sets: '', reps: '', weight: '' });
+    try {
+      await axios.post(`${API_URL}/workouts`, {
+        ...newExercise,
+        workout_date: selectedDate
+      });
+
+      setNewExercise({ exercise_name: '', sets: '', reps: '', weight: '' });
+      fetchWorkouts();
+    } catch (err) {
+      setError('Failed to add exercise');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteExercise = (exerciseId) => {
-    const updatedWorkouts = {
-      ...workouts,
-      [selectedDate]: workouts[selectedDate].filter(ex => ex.id !== exerciseId)
-    };
+  const deleteExercise = async (workoutId) => {
+    if (!window.confirm('Delete this exercise?')) return;
 
-    setWorkouts(updatedWorkouts);
-    const updatedUsers = {
-      ...users,
-      [currentUser]: { ...users[currentUser], workouts: updatedWorkouts }
-    };
-    setUsers(updatedUsers);
-    sessionStorage.setItem('fitnessUsers', JSON.stringify(updatedUsers));
+    try {
+      await axios.delete(`${API_URL}/workouts/${workoutId}`);
+      fetchWorkouts();
+    } catch (err) {
+      setError('Failed to delete exercise');
+      console.error(err);
+    }
   };
 
-  if (!currentUser) {
+  if (!token) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black flex items-center justify-center p-4">
-        <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-700">
-          <div className="flex items-center justify-center mb-6">
-            <span className="text-6xl">💪</span>
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #1e3a8a, #7c3aed, #4338ca)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+        <div style={{ background: 'white', borderRadius: '1rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', padding: '2rem', width: '100%', maxWidth: '28rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', color: '#1f2937' }}>💪 Fitness Tracker</h1>
+            <p style={{ color: '#6b7280', marginTop: '0.5rem' }}>Track your workouts and progress</p>
           </div>
-          <h1 className="text-3xl font-bold text-center mb-2 text-white">Fitness Tracker</h1>
-          <p className="text-center text-gray-400 mb-6">Track your workouts and progress</p>
 
-          <div className="flex gap-2 mb-6">
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
             <button
               onClick={() => setLoginMode('login')}
-              className={`flex-1 py-2 rounded-lg font-semibold transition ${loginMode === 'login'
-                ? 'bg-cyan-500 text-white'
-                : 'bg-gray-700 text-gray-300'
-                }`}
+              style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', fontWeight: '600', border: 'none', cursor: 'pointer', background: loginMode === 'login' ? '#7c3aed' : '#e5e7eb', color: loginMode === 'login' ? 'white' : '#374151' }}
             >
               Login
             </button>
             <button
               onClick={() => setLoginMode('signup')}
-              className={`flex-1 py-2 rounded-lg font-semibold transition ${loginMode === 'signup'
-                ? 'bg-cyan-500 text-white'
-                : 'bg-gray-700 text-gray-300'
-                }`}
+              style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', fontWeight: '600', border: 'none', cursor: 'pointer', background: loginMode === 'signup' ? '#7c3aed' : '#e5e7eb', color: loginMode === 'signup' ? 'white' : '#374151' }}
             >
               Sign Up
             </button>
           </div>
 
-          <div className="space-y-4">
+          {error && (
+            <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', padding: '0.75rem 1rem', borderRadius: '0.25rem', marginBottom: '1rem' }}>
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Username</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Username</label>
               <input
                 type="text"
                 value={credentials.username}
                 onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
-                onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+                style={{ width: '100%', padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', outline: 'none' }}
+                required
               />
             </div>
+
+            {loginMode === 'signup' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Email (Optional)</label>
+                <input
+                  type="email"
+                  value={credentials.email}
+                  onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
+                  style={{ width: '100%', padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', outline: 'none' }}
+                />
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Password</label>
               <input
                 type="password"
                 value={credentials.password}
                 onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
-                onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+                style={{ width: '100%', padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', outline: 'none' }}
+                required
               />
             </div>
+
             <button
-              onClick={handleAuth}
-              className="w-full bg-cyan-500 text-white py-2 rounded-lg font-semibold hover:bg-cyan-600 transition"
+              type="submit"
+              disabled={loading}
+              style={{ width: '100%', background: '#7c3aed', color: 'white', padding: '0.5rem', borderRadius: '0.5rem', fontWeight: '600', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}
             >
-              {loginMode === 'login' ? 'Login' : 'Create Account'}
+              {loading ? 'Please wait...' : loginMode === 'login' ? 'Login' : 'Create Account'}
             </button>
-          </div>
+          </form>
         </div>
       </div>
     );
   }
 
-  const todaysWorkouts = workouts[selectedDate] || [];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="bg-gray-800 rounded-2xl shadow-xl p-6 mb-6 border border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">💪</span>
-              <h1 className="text-2xl font-bold text-white">Fitness Tracker</h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-gray-300">
-                <span className="text-xl">👤</span>
-                <span className="font-medium">{currentUser}</span>
-              </div>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #1e3a8a, #7c3aed, #4338ca)', padding: '1rem' }}>
+      <div style={{ maxWidth: '56rem', margin: '0 auto' }}>
+        <div style={{ background: 'white', borderRadius: '1rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1f2937' }}>💪 Fitness Tracker</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ color: '#374151' }}>👤 {user?.username}</span>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                style={{ padding: '0.5rem 1rem', background: '#ef4444', color: 'white', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}
               >
-                <span>🚪</span>
                 Logout
               </button>
             </div>
           </div>
         </div>
 
-        {/* Date Selector */}
-        <div className="bg-gray-800 rounded-2xl shadow-xl p-6 mb-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">📅</span>
-            <h2 className="text-xl font-bold text-white">Select Workout Date</h2>
+        {error && (
+          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', padding: '0.75rem 1rem', borderRadius: '0.25rem', marginBottom: '1rem' }}>
+            {error}
           </div>
+        )}
+
+        <div style={{ background: 'white', borderRadius: '1rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '1rem' }}>📅 Select Workout Date</h2>
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-lg outline-none"
+            style={{ width: '100%', padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1.125rem' }}
           />
         </div>
 
-        {/* Add Exercise Form */}
-        <div className="bg-gray-800 rounded-2xl shadow-xl p-6 mb-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">➕</span>
-            <h2 className="text-xl font-bold text-white">Add Exercise</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div style={{ background: 'white', borderRadius: '1rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '1rem' }}>➕ Add Exercise</h2>
+          <form onSubmit={addExercise} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             <input
               type="text"
               placeholder="Exercise name"
-              value={newExercise.name}
-              onChange={(e) => setNewExercise({ ...newExercise, name: e.target.value })}
-              className="px-4 py-2 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+              value={newExercise.exercise_name}
+              onChange={(e) => setNewExercise({ ...newExercise, exercise_name: e.target.value })}
+              style={{ padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}
+              required
             />
             <input
               type="number"
               placeholder="Sets"
               value={newExercise.sets}
               onChange={(e) => setNewExercise({ ...newExercise, sets: e.target.value })}
-              className="px-4 py-2 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+              style={{ padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}
             />
             <input
               type="number"
               placeholder="Reps"
               value={newExercise.reps}
               onChange={(e) => setNewExercise({ ...newExercise, reps: e.target.value })}
-              className="px-4 py-2 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+              style={{ padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}
             />
             <input
               type="number"
               step="0.1"
-              placeholder="Weight (kgs)"
+              placeholder="Weight (lbs)"
               value={newExercise.weight}
               onChange={(e) => setNewExercise({ ...newExercise, weight: e.target.value })}
-              className="px-4 py-2 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+              style={{ padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}
             />
             <button
-              onClick={addExercise}
-              className="md:col-span-2 bg-cyan-500 text-white py-2 rounded-lg font-semibold hover:bg-cyan-600 transition flex items-center justify-center gap-2"
+              type="submit"
+              disabled={loading}
+              style={{ gridColumn: '1 / -1', background: '#7c3aed', color: 'white', padding: '0.5rem', borderRadius: '0.5rem', fontWeight: '600', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}
             >
-              <span>➕</span>
-              Add Exercise
+              {loading ? 'Adding...' : '➕ Add Exercise'}
             </button>
-          </div>
+          </form>
         </div>
 
-        {/* Workout Log */}
-        <div className="bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-700">
-          <h2 className="text-xl font-bold text-white mb-4">
-            📋 Workout Log - {new Date(selectedDate).toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
+        <div style={{ background: 'white', borderRadius: '1rem', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', padding: '1.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '1rem' }}>
+            📋 Workout Log - {new Date(selectedDate).toLocaleDateString()}
           </h2>
-          {todaysWorkouts.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">No exercises logged for this date</p>
+
+          {loading ? (
+            <p style={{ color: '#6b7280', textAlign: 'center', padding: '2rem 0' }}>Loading...</p>
+          ) : workouts.length === 0 ? (
+            <p style={{ color: '#6b7280', textAlign: 'center', padding: '2rem 0' }}>No exercises logged for this date</p>
           ) : (
-            <div className="space-y-3">
-              {todaysWorkouts.map((exercise) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {workouts.map((workout) => (
                 <div
-                  key={exercise.id}
-                  className="flex items-center justify-between p-4 bg-gray-700 rounded-lg border border-gray-600"
+                  key={workout.id}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: '#faf5ff', borderRadius: '0.5rem', border: '1px solid #e9d5ff' }}
                 >
                   <div>
-                    <h3 className="font-bold text-white text-lg">{exercise.name}</h3>
-                    <p className="text-gray-300">
-                      {exercise.sets && `${exercise.sets} sets`}
-                      {exercise.sets && exercise.reps && ' × '}
-                      {exercise.reps && `${exercise.reps} reps`}
-                      {exercise.weight && ` @ ${exercise.weight} kgs`}
+                    <h3 style={{ fontWeight: 'bold', color: '#1f2937', fontSize: '1.125rem' }}>{workout.exercise_name}</h3>
+                    <p style={{ color: '#6b7280' }}>
+                      {workout.sets && `${workout.sets} sets`}
+                      {workout.sets && workout.reps && ' × '}
+                      {workout.reps && `${workout.reps} reps`}
+                      {workout.weight && ` @ ${workout.weight} lbs`}
                     </p>
                   </div>
                   <button
-                    onClick={() => deleteExercise(exercise.id)}
-                    className="p-2 text-red-400 hover:bg-gray-600 rounded-lg transition text-xl"
+                    onClick={() => deleteExercise(workout.id)}
+                    style={{ padding: '0.5rem', color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '0.5rem' }}
                   >
                     🗑️
                   </button>
@@ -288,3 +305,5 @@ export default function FitnessTracker() {
     </div>
   );
 }
+
+export default App;

@@ -9,13 +9,7 @@ const app = express();
 
 
 app.use(express.json());
-app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'https://fitness-tracker-gamma-indol.vercel.app/'
-    ],
-    credentials: true
-}));
+app.use(cors());
 
 
 const pool = mysql.createPool({
@@ -289,3 +283,32 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+app.get('/api/test-db', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT 1 + 1 as result');
+        const [users] = await pool.query('SELECT * FROM users');
+        res.json({
+            connection: 'successful',
+            test: rows,
+            userCount: users.length,
+            users: users.map(u => ({ id: u.id, username: u.username }))
+        });
+    } catch (error) {
+        res.status(500).json({
+            connection: 'failed',
+            error: error.message
+        });
+    }
+});
+
+pool.getConnection()
+    .then(connection => {
+        console.log('✅ Database connected successfully');
+        connection.release();
+    })
+    .catch(err => {
+        console.error('❌ Database connection failed:', err.message);
+        process.exit(1);
+    });
+
